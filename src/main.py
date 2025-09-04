@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 
 from database import Database
 from model import TransactionBase
@@ -15,11 +15,11 @@ db = Database(
     )
 
 
-@app.post("/clientes/{client_id}/transacoes")
+@app.post("/clientes/{client_id}/transacoes", status_code=status.HTTP_200_OK)
 async def new_transaction(client_id: int, request: TransactionBase):
     return await create_transaction(client_id, request, db)
 
 
-@app.get("/clientes/{client_id}/extrato")
+@app.get("/clientes/{client_id}/extrato", status_code=status.HTTP_200_OK)
 async def get_user_statement(client_id: int):
     return await retrieve_client_statement(client_id, db)

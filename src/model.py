@@ -13,3 +13,8 @@ class TransactionRequest(BaseModel):
 
 class TransactionModel(TransactionRequest):
     date: datetime
+
+
+class CreateTransactionResponse(BaseModel):
+    limite: int
+    saldo: int
