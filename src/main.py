@@ -1,11 +1,12 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
 
 from database import Database
-from model import TransactionBase
+from model import TransactionRequest
 from service import create_transaction, retrieve_client_statement
 from config import DB_USER, DB_PW, DB_NAME, DB_HOST, POOL_SIZE
 
-app = FastAPI()
+
 db = Database(
     DB_USER,
     DB_PW,
@@ -15,8 +16,16 @@ db = Database(
     )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global db
+    db.create_pool()
+
+app = FastAPI(lifespan=lifespan)
+
+
 @app.post("/clientes/{client_id}/transacoes", status_code=status.HTTP_200_OK)
-async def new_transaction(client_id: int, request: TransactionBase):
+async def new_transaction(client_id: int, request: TransactionRequest):
     return await create_transaction(client_id, request, db)
 
 
