@@ -1,0 +1,30 @@
+services:
+  db:
+      image: postgres:16.2
+      hostname: db
+      # network_mode: host
+      command: 'postgres -c log_min_error_statement=panic -c log_min_duration_statement=-1 -c log_min_duration_sample=-1 -c log_min_messages=panic  -c checkpoint_timeout=600 -c max_wal_size=4096 -c max_connections=400 -c shared_buffers=175MB -c effective_io_concurrency=4 -c synchronous_commit=off'
+      environment:
+        - POSTGRES_PASSWORD=test
+        - POSTGRES_USER=test
+        - POSTGRES_DB=test
+        - PGDATA=/var/lib/postgresql/data/rinha
+      ports:
+        - "5433:5432"
+      volumes:
+        - ./sql/init_db.sql:/docker-entrypoint-initdb.d/script.sql
+        - postgres_data_rinha:/var/lib/postgresql/data/rinha
+      healthcheck:
+        test: [ "CMD-SHELL", "pg_isready -U test -d test"]
+        interval: 5s
+        timeout: 5s
+        retries: 20
+        start_period: 10s
+      deploy:
+        resources:
+          limits:
+            cpus: "0.55"
+            memory: "300MB"
+
+volumes:
+  postgres_data_rinha:

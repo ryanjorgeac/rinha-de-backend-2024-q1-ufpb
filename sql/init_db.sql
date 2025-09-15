@@ -21,7 +21,7 @@ CREATE INDEX idx_transaction_client_id ON transactions USING HASH(client_id);
 
 -- Add contraint to check user balance before update
 ALTER TABLE clients ADD CONSTRAINT balance_within_limit CHECK (c_balance > -c_limit);
-ALTER TABLE transactions ADD CONSTRAINT fk_client_id FOREIGN KEY (client_id) REFERENCES clientes(id);
+ALTER TABLE transactions ADD CONSTRAINT fk_client_id FOREIGN KEY (client_id) REFERENCES clients(id);
 ALTER TABLE transactions ADD CONSTRAINT valid_transaction_type CHECK (t_type IN ('c', 'd'));
 
 -- Function to update a client's balance

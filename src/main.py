@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
 
-from database import Database
-from model import TransactionRequest
-from service import create_transaction, retrieve_client_statement
-from config import DB_USER, DB_PW, DB_NAME, DB_HOST, POOL_SIZE
+from .database import Database
+from .model import TransactionRequest
+from .service import create_transaction, retrieve_client_statement
+from .config import DB_USER, DB_PW, DB_NAME, DB_HOST, POOL_SIZE
 
 
 db = Database(
@@ -13,13 +13,15 @@ db = Database(
     DB_NAME,
     DB_HOST,
     POOL_SIZE
-    )
-
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global db
-    db.create_pool()
+    await db.create_pool()
+    print("Database connection pool created successfully")
+    yield
+    await db.close_pool()
+    print("Database connection pool closed")
 
 app = FastAPI(lifespan=lifespan)
 
