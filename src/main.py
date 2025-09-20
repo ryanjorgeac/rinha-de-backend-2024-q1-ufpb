@@ -4,7 +4,7 @@ from fastapi import FastAPI, status
 from .database import Database
 from .model import TransactionRequest
 from .service import create_transaction, retrieve_client_statement
-from .config import DB_USER, DB_PW, DB_NAME, DB_HOST, POOL_SIZE
+from .config import DB_USER, DB_PW, DB_NAME, DB_HOST, DB_PORT, POOL_SIZE
 
 
 db = Database(
@@ -12,6 +12,7 @@ db = Database(
     DB_PW,
     DB_NAME,
     DB_HOST,
+    DB_PORT,
     POOL_SIZE
 )
 

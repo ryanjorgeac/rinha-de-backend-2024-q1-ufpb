@@ -4,11 +4,12 @@ from .model import TransactionRequest
 
 
 class Database:
-    def __init__(self, db_user, db_pw, db_name, db_host, pool_size):
+    def __init__(self, db_user, db_pw, db_name, db_host, db_port, pool_size):
         self.db_user = db_user
         self.db_pw = db_pw
         self.db_name = db_name
         self.db_host = db_host
+        self.db_port = db_port
         self.pool_size = pool_size
 
     async def create_pool(self):
@@ -17,7 +18,7 @@ class Database:
             password=self.db_pw,
             database=self.db_name,
             host=self.db_host,
-            port='5433',
+            port=int(self.db_port),
             max_size=int(self.pool_size)
         )
 
