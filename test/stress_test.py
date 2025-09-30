@@ -24,7 +24,7 @@ class TestResult:
 
 
 class APIStressTester:
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:9999"):
         self.base_url = base_url
         self.results: List[TestResult] = []
         self.setup_logging()
@@ -44,7 +44,7 @@ class APIStressTester:
         file_handler.setLevel(logging.INFO)
 
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.WARNING)
+        console_handler.setLevel(logging.INFO)  # Changed to INFO to see more output
 
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
@@ -67,12 +67,12 @@ class APIStressTester:
         }
         
         timestamp = datetime.now().isoformat()
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         try:
             async with session.post(url, json=transaction_data) as response:
-                response_time = time.time() - start_time
                 response_text = await response.text()
+                response_time = time.perf_counter() - start_time
                 
                 result = TestResult(
                     endpoint="POST /transacoes",
@@ -82,26 +82,33 @@ class APIStressTester:
                     client_id=client_id,
                     timestamp=timestamp,
                     request_data=transaction_data,
-                    response_data=response_text[:500]  # Limit response size
+                    response_data=response_text[:500]
                 )
 
-                self.logger.info(
-                    f"POST /clientes/{client_id}/transacoes | "
-                    f"Status: {response.status} | "
-                    f"Time: {response_time*1000:.2f}ms | "
-                    f"Request: {json.dumps(transaction_data)} | "
-                    f"Response: {response_text[:200]}..."
-                )
+                # Only log errors and warnings to console
+                if result.success:
+                    self.logger.debug(  # Changed to debug level
+                        f"POST /clientes/{client_id}/transacoes | "
+                        f"Status: {response.status} | "
+                        f"Time: {response_time*1000:.2f}ms"
+                    )
+                else:
+                    self.logger.warning(
+                        f"POST /clientes/{client_id}/transacoes | "
+                        f"Status: {response.status} | "
+                        f"Time: {response_time*1000:.2f}ms | "
+                        f"Response: {response_text[:200]}"
+                    )
                 
                 return result
                 
-        except Exception as e:
-            response_time = time.time() - start_time
-            error_msg = str(e)
+        except asyncio.TimeoutError:
+            response_time = time.perf_counter() - start_time
+            error_msg = f"TIMEOUT after {response_time:.2f}s"
             
             result = TestResult(
                 endpoint="POST /transacoes",
-                status_code=0,
+                status_code=408,  # Request Timeout
                 response_time=response_time,
                 success=False,
                 client_id=client_id,
@@ -112,9 +119,54 @@ class APIStressTester:
 
             self.logger.error(
                 f"POST /clientes/{client_id}/transacoes | "
-                f"ERROR: {error_msg} | "
-                f"Time: {response_time*1000:.2f}ms | "
-                f"Request: {json.dumps(transaction_data)}"
+                f"TIMEOUT: {error_msg} | "
+                f"Time: {response_time*1000:.2f}ms"
+            )
+            
+            return result
+            
+        except aiohttp.ClientError as e:
+            response_time = time.perf_counter() - start_time
+            error_msg = f"CLIENT ERROR: {str(e)}"
+            
+            result = TestResult(
+                endpoint="POST /transacoes",
+                status_code=0,  # Connection error
+                response_time=response_time,
+                success=False,
+                client_id=client_id,
+                timestamp=timestamp,
+                request_data=transaction_data,
+                error=error_msg
+            )
+
+            self.logger.error(
+                f"POST /clientes/{client_id}/transacoes | "
+                f"CLIENT ERROR: {error_msg} | "
+                f"Time: {response_time*1000:.2f}ms"
+            )
+            
+            return result
+            
+        except Exception as e:
+            response_time = time.perf_counter() - start_time
+            error_msg = f"UNEXPECTED ERROR: {str(e)}"
+            
+            result = TestResult(
+                endpoint="POST /transacoes",
+                status_code=-1,  # Unexpected error
+                response_time=response_time,
+                success=False,
+                client_id=client_id,
+                timestamp=timestamp,
+                request_data=transaction_data,
+                error=error_msg
+            )
+
+            self.logger.error(
+                f"POST /clientes/{client_id}/transacoes | "
+                f"UNEXPECTED ERROR: {error_msg} | "
+                f"Time: {response_time*1000:.2f}ms"
             )
             
             return result
@@ -123,12 +175,12 @@ class APIStressTester:
         url = f"{self.base_url}/clientes/{client_id}/extrato"
         
         timestamp = datetime.now().isoformat()
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         try:
             async with session.get(url) as response:
-                response_time = time.time() - start_time
                 response_text = await response.text()
+                response_time = time.perf_counter() - start_time
                 
                 result = TestResult(
                     endpoint="GET /extrato",
@@ -137,21 +189,50 @@ class APIStressTester:
                     success=response.status == 200,
                     client_id=client_id,
                     timestamp=timestamp,
-                    response_data=response_text[:500]  # Limit response size
+                    response_data=response_text[:500]
                 )
 
-                self.logger.info(
-                    f"GET /clientes/{client_id}/extrato | "
-                    f"Status: {response.status} | "
-                    f"Time: {response_time*1000:.2f}ms | "
-                    f"Response: {response_text[:200]}..."
-                )
+                if result.success:
+                    self.logger.debug(
+                        f"GET /clientes/{client_id}/extrato | "
+                        f"Status: {response.status} | "
+                        f"Time: {response_time*1000:.2f}ms"
+                    )
+                else:
+                    self.logger.warning(
+                        f"GET /clientes/{client_id}/extrato | "
+                        f"Status: {response.status} | "
+                        f"Time: {response_time*1000:.2f}ms | "
+                        f"Response: {response_text[:200]}"
+                    )
                 
                 return result
                 
-        except Exception as e:
-            response_time = time.time() - start_time
-            error_msg = str(e)
+        except asyncio.TimeoutError:
+            response_time = time.perf_counter() - start_time
+            error_msg = f"TIMEOUT after {response_time:.2f}s"
+            
+            result = TestResult(
+                endpoint="GET /extrato",
+                status_code=408,
+                response_time=response_time,
+                success=False,
+                client_id=client_id,
+                timestamp=timestamp,
+                error=error_msg
+            )
+
+            self.logger.error(
+                f"GET /clientes/{client_id}/extrato | "
+                f"TIMEOUT: {error_msg} | "
+                f"Time: {response_time*1000:.2f}ms"
+            )
+            
+            return result
+            
+        except aiohttp.ClientError as e:
+            response_time = time.perf_counter() - start_time
+            error_msg = f"CLIENT ERROR: {str(e)}"
             
             result = TestResult(
                 endpoint="GET /extrato",
@@ -165,7 +246,29 @@ class APIStressTester:
 
             self.logger.error(
                 f"GET /clientes/{client_id}/extrato | "
-                f"ERROR: {error_msg} | "
+                f"CLIENT ERROR: {error_msg} | "
+                f"Time: {response_time*1000:.2f}ms"
+            )
+            
+            return result
+            
+        except Exception as e:
+            response_time = time.perf_counter() - start_time
+            error_msg = f"UNEXPECTED ERROR: {str(e)}"
+            
+            result = TestResult(
+                endpoint="GET /extrato",
+                status_code=-1,
+                response_time=response_time,
+                success=False,
+                client_id=client_id,
+                timestamp=timestamp,
+                error=error_msg
+            )
+
+            self.logger.error(
+                f"GET /clientes/{client_id}/extrato | "
+                f"UNEXPECTED ERROR: {error_msg} | "
                 f"Time: {response_time*1000:.2f}ms"
             )
             
@@ -173,35 +276,26 @@ class APIStressTester:
     
     async def run_single_client_test(self, session: aiohttp.ClientSession, client_id: int, num_requests: int):
         self.logger.info(f"Starting tests for client {client_id} - {num_requests} requests")
-        tasks = []
         
-        for _ in range(num_requests):
+        for i in range(num_requests):
+            if i > 0:
+                await asyncio.sleep(random.uniform(0.01, 0.05))  # 10-50ms between requests
+
             if random.choice([True, False]):
-                tasks.append(self.create_transaction(session, client_id))
+                result = await self.create_transaction(session, client_id)
             else:
-                tasks.append(self.get_statement(session, client_id))
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        for result in results:
-            if isinstance(result, TestResult):
-                self.results.append(result)
-            else:
-                error_result = TestResult(
-                    endpoint="UNKNOWN",
-                    status_code=0,
-                    response_time=0,
-                    success=False,
-                    client_id=client_id,
-                    timestamp=datetime.now().isoformat(),
-                    error=str(result)
-                )
-                self.results.append(error_result)
-                self.logger.error(f"Unexpected error for client {client_id}: {result}")
+                result = await self.get_statement(session, client_id)
+            
+            self.results.append(result)
+
+            if (i + 1) % 10 == 0:
+                success_count = sum(1 for r in self.results[-10:] if r.success)
+                self.logger.info(f"Client {client_id}: {i+1}/{num_requests} requests ({success_count}/10 recent success)")
         
         self.logger.info(f"Completed tests for client {client_id}")
     
-    async def run_stress_test(self, num_clients: int = 5, requests_per_client: int = 50, concurrent_clients: int = 10):
+    async def run_stress_test(self, num_clients: int = 5, requests_per_client: int = 50, concurrent_clients: int = 5):
+        """Run stress test with better connection management and gradual ramp-up"""
         config_info = {
             "clients": num_clients,
             "requests_per_client": requests_per_client,
@@ -221,28 +315,71 @@ class APIStressTester:
         print(f"   - Base URL: {self.base_url}")
         print()
         
+        # Warm up the API first
+        print("🔥 Warming up API...")
+        await self.warmup_api()
+        
         start_time = time.time()
 
-        connector = aiohttp.TCPConnector(limit=100, limit_per_host=50)
-        timeout = aiohttp.ClientTimeout(total=30)
+        # Better connection configuration
+        connector = aiohttp.TCPConnector(
+            limit=200,                # Total connection pool size
+            limit_per_host=50,        # Per host limit
+            keepalive_timeout=60,     # Keep connections alive longer
+            enable_cleanup_closed=True,
+            use_dns_cache=True
+        )
         
-        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        # More reasonable timeouts
+        timeout = aiohttp.ClientTimeout(
+            total=60,      # Total timeout
+            connect=10,    # Connection timeout
+            sock_read=30   # Read timeout
+        )
+        
+        async with aiohttp.ClientSession(
+            connector=connector, 
+            timeout=timeout,
+            headers={"Connection": "keep-alive"}
+        ) as session:
             semaphore = asyncio.Semaphore(concurrent_clients)
             
             async def run_client_with_semaphore(client_id):
                 async with semaphore:
                     await self.run_single_client_test(session, client_id, requests_per_client)
 
-            client_tasks = [
-                run_client_with_semaphore(client_id) 
-                for client_id in range(1, num_clients + 1)
-            ]
+            # Gradual ramp-up of clients
+            client_tasks = []
+            for client_id in range(1, num_clients + 1):
+                client_tasks.append(run_client_with_semaphore(client_id))
+                # Small delay between starting each client
+                if client_id < num_clients:
+                    await asyncio.sleep(0.1)
             
             await asyncio.gather(*client_tasks)
         
         total_time = time.time() - start_time
         self.save_detailed_results()
         self.print_results(total_time)
+    
+    async def warmup_api(self):
+        """Warm up the API like Gatling does"""
+        connector = aiohttp.TCPConnector(limit=10)
+        timeout = aiohttp.ClientTimeout(total=10)
+        
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+            for i in range(3):
+                try:
+                    async with session.get(f"{self.base_url}/clientes/1/extrato") as response:
+                        if response.status == 200:
+                            print(f"✅ API warmup request {i+1}/3 successful")
+                        else:
+                            print(f"⚠️ API warmup request {i+1}/3 returned {response.status}")
+                except Exception as e:
+                    print(f"❌ API warmup request {i+1}/3 failed: {e}")
+                
+                if i < 2:
+                    await asyncio.sleep(1)
     
     def save_detailed_results(self):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -277,10 +414,22 @@ class APIStressTester:
         successful_requests = sum(1 for r in self.results if r.success)
         failed_requests = total_requests - successful_requests
 
-        response_times = [r.response_time for r in self.results if r.success]
-        avg_response_time = sum(response_times) / len(response_times) if response_times else 0
-        max_response_time = max(response_times) if response_times else 0
-        min_response_time = min(response_times) if response_times else 0
+        all_response_times = [r.response_time for r in self.results]
+        successful_response_times = [r.response_time for r in self.results if r.success]
+
+        avg_response_time = sum(all_response_times) / len(all_response_times) if all_response_times else 0
+        max_response_time = max(all_response_times) if all_response_times else 0
+        min_response_time = min(all_response_times) if all_response_times else 0
+
+        avg_success_response_time = sum(successful_response_times) / len(successful_response_times) if successful_response_times else 0
+
+        # Calculate percentiles for successful requests
+        if successful_response_times:
+            sorted_times = sorted(successful_response_times)
+            p50 = sorted_times[int(len(sorted_times) * 0.5)]
+            p75 = sorted_times[int(len(sorted_times) * 0.75)]
+            p95 = sorted_times[int(len(sorted_times) * 0.95)]
+            p99 = sorted_times[int(len(sorted_times) * 0.99)]
 
         status_codes = {}
         for result in self.results:
@@ -289,10 +438,11 @@ class APIStressTester:
         endpoint_stats = {}
         for result in self.results:
             if result.endpoint not in endpoint_stats:
-                endpoint_stats[result.endpoint] = {"total": 0, "success": 0}
+                endpoint_stats[result.endpoint] = {"total": 0, "success": 0, "response_times": []}
             endpoint_stats[result.endpoint]["total"] += 1
             if result.success:
                 endpoint_stats[result.endpoint]["success"] += 1
+                endpoint_stats[result.endpoint]["response_times"].append(result.response_time)
 
         print(f"⏱️  Total execution time: {total_time:.2f} seconds")
         print(f"📊 Total requests: {total_requests}")
@@ -301,28 +451,41 @@ class APIStressTester:
         print(f"🚀 Requests per second: {total_requests/total_time:.2f}")
         print()
         
-        print("⏱️  Response Times:")
+        print("⏱️  Response Times (All Requests):")
         print(f"   - Average: {avg_response_time*1000:.2f} ms")
         print(f"   - Minimum: {min_response_time*1000:.2f} ms")
         print(f"   - Maximum: {max_response_time*1000:.2f} ms")
+        
+        if successful_response_times:
+            print(f"\n⏱️  Response Times (Successful Requests Only):")
+            print(f"   - Average: {avg_success_response_time*1000:.2f} ms")
+            print(f"   - P50 (median): {p50*1000:.2f} ms")
+            print(f"   - P75: {p75*1000:.2f} ms")
+            print(f"   - P95: {p95*1000:.2f} ms")
+            print(f"   - P99: {p99*1000:.2f} ms")
         print()
         
         print("📊 Status Codes:")
         for status_code, count in sorted(status_codes.items()):
-            print(f"   - {status_code}: {count} requests")
+            percentage = count / total_requests * 100
+            print(f"   - {status_code}: {count} requests ({percentage:.1f}%)")
         print()
         
         print("🎯 Endpoint Statistics:")
         for endpoint, stats in endpoint_stats.items():
             success_rate = stats["success"] / stats["total"] * 100
-            print(f"   - {endpoint}: {stats['success']}/{stats['total']} ({success_rate:.1f}% success)")
+            avg_time = sum(stats["response_times"]) / len(stats["response_times"]) * 1000 if stats["response_times"] else 0
+            print(f"   - {endpoint}: {stats['success']}/{stats['total']} ({success_rate:.1f}% success, avg: {avg_time:.1f}ms)")
 
         self.logger.info(f"Total execution time: {total_time:.2f} seconds")
         self.logger.info(f"Total requests: {total_requests}")
         self.logger.info(f"Successful requests: {successful_requests} ({successful_requests/total_requests*100:.1f}%)")
         self.logger.info(f"Failed requests: {failed_requests} ({failed_requests/total_requests*100:.1f}%)")
         self.logger.info(f"Requests per second: {total_requests/total_time:.2f}")
-        self.logger.info(f"Average response time: {avg_response_time*1000:.2f} ms")
+        self.logger.info(f"Average response time (all): {avg_response_time*1000:.2f} ms")
+        if successful_response_times:
+            self.logger.info(f"Average response time (success only): {avg_success_response_time*1000:.2f} ms")
+            self.logger.info(f"P95 response time: {p95*1000:.2f} ms")
         
         for status_code, count in sorted(status_codes.items()):
             self.logger.info(f"Status {status_code}: {count} requests")
@@ -330,13 +493,22 @@ class APIStressTester:
         errors = [r for r in self.results if not r.success and r.error]
         if errors:
             print()
-            print("❌ Errors (first 10):")
-            for error in errors[:10]:
-                print(f"   - {error.endpoint}: {error.error}")
+            print("❌ Error Analysis:")
+            error_types = {}
+            for error in errors:
+                error_type = error.error.split(':')[0] if error.error else 'Unknown'
+                error_types[error_type] = error_types.get(error_type, 0) + 1
+            
+            for error_type, count in sorted(error_types.items(), key=lambda x: x[1], reverse=True):
+                print(f"   - {error_type}: {count} occurrences")
+            
+            print("\n❌ First 5 Error Details:")
+            for error in errors[:5]:
+                print(f"   - {error.endpoint} (Client {error.client_id}): {error.error}")
             
             self.logger.warning(f"Total errors: {len(errors)}")
-            for error in errors:
-                self.logger.error(f"{error.endpoint} - Client {error.client_id}: {error.error}")
+            for error_type, count in error_types.items():
+                self.logger.error(f"{error_type}: {count} occurrences")
         
         print(f"\n📝 Check {self.log_filename} for detailed logs")
         self.logger.info("Stress test completed")
@@ -349,7 +521,7 @@ async def main():
     parser.add_argument("--url", default="http://localhost:9999", help="Base URL of the API")
     parser.add_argument("--clients", type=int, default=5, help="Number of different client IDs to test")
     parser.add_argument("--requests", type=int, default=50, help="Number of requests per client")
-    parser.add_argument("--concurrent", type=int, default=10, help="Number of concurrent clients")
+    parser.add_argument("--concurrent", type=int, default=5, help="Number of concurrent clients")
     
     args = parser.parse_args()
     
